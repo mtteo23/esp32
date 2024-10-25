@@ -500,7 +500,7 @@ void drawButtons() {
 bool drawnBut=0;
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define nSchermate 2
+#define nSchermate 3
 
 /*-------- SETUP & LOOP ----------*/
 void setup()
@@ -529,9 +529,88 @@ void setup()
 }
 
 
-int schermata=1;
+int schermata=0;
+int lastSchermata=0;
+bool justPressed=0;
 void loop()
 {
+  /*
+  TouchPoint p = ts.getTouch();
+  if (p.zRaw > 0 && !justPressed)
+  {
+    bool controllo=0;
+    if(p.x<TFT_HEIGHT/3)
+    {
+      lastSchermata=schermata;
+      schermata=(schermata-1+nSchermate)%nSchermate;
+      controllo=1;
+    }
+    if(p.x>TFT_HEIGHT/3 && p.x<TFT_HEIGHT*2/3)
+    {
+      Serial.println("selezionato");
+      controllo=1;
+    }
+    if(p.x>TFT_HEIGHT*2/3)
+    {
+      lastSchermata=schermata;
+      schermata=(schermata+1)%nSchermate;
+      controllo=1;
+    }
+    if(!controllo)
+    {
+      Serial.println("ERRORE, toccato fuori pulsante");
+    }
+  }
+  justPressed=0;
+  if(p.zRaw > 0)
+  {
+    justPressed=1;
+  }
+
+
+  switch(schermata)
+  {
+    case 0:
+      {
+        tft.fillScreen(TFT_BLUE);
+        
+        time_t current = now();
+
+        if(lastSchermata!=schermata)
+        {
+          SetupCYD();
+          SetupDigits();
+          drawnClock=1;
+        }
+
+        if(connected==0)
+        {
+          SetupWiFi();
+          SetupNTP();
+          connected=1;
+        }
+        if (current != prevDisplay)
+        {
+          prevDisplay = current;
+          ParseDigits(prevDisplay);
+          DrawDigitsAtOnce();    // Choose one: DrawDigitsWithoutAnimation(), DrawDigitsAtOnce(), DrawDigitsOneByOne()
+          DrawDate(prevDisplay); // Draw Date and day of the week.
+          DrawColons();
+          DrawAmPm();
+        }
+        delay(100);
+      }
+    break;
+    case 1:
+      tft.fillScreen(TFT_RED);
+    break;
+    case 2:
+      tft.fillScreen(TFT_GREEN);
+    break;
+  }
+  
+  lastSchermata=schermata;
+  /*/
   time_t current = now();
   if(schermata!=0)
   {
@@ -623,4 +702,6 @@ void loop()
       }
     break;
   }
+  //*/
 }
+
