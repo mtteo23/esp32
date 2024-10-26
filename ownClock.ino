@@ -11,16 +11,11 @@ You will have to modify the PREFERENCES section in RollingClock.ino to your WiFi
 #include <WiFi.h>    // To connect to WiFi
 #include <WiFiUdp.h> // To communicate with NTP server
 #include <Timezone.h>
+#include <TFT_eSPI.h> // Hardware-specific library
+#include <SPI.h>
+#include <XPT2046_Bitbang.h>
 
 #define TOUCH_CS // This sketch does not use touch, but this is defined to quiet the warning about not defining touch_cs.
-
-/*-------- DEBUGGING ----------*/
-void Debug(String label, int val)
-{
-  Serial.print(label);
-  Serial.print("=");
-  Serial.println(val);
-}
 
 /*-------- TIME SERVER ----------*/
 // NTP Servers:
@@ -47,14 +42,10 @@ const bool NOT_US_DATE = true;
 TimeChangeRule myStandardTime = {"CEST", First, Sun, Nov, 2, 1 * 60};
 TimeChangeRule myDaylightSavingsTime = {"CET", Second, Sun, Mar, 2, 2 * 60};
 
-// TimeChangeRule myStandardTime = {"GMT", First, Sun, Nov, 2, 0};
-// TimeChangeRule myDaylightSavingsTime = {"IST", Second, Sun, Mar, 2, 1 * 60};
 Timezone myTZ(myStandardTime, myDaylightSavingsTime);
 static const int ntpSyncIntervalInSeconds = 300; // How often to sync with time server (300 = every five minutes)
 
 /*-------- CYD (Cheap Yellow Display) ----------*/
-#include <TFT_eSPI.h> // Hardware-specific library
-#include <SPI.h>
 TFT_eSPI tft = TFT_eSPI();              // Invoke custom library
 TFT_eSprite sprite = TFT_eSprite(&tft); // Sprite class
 
@@ -411,46 +402,6 @@ void SetupNTP()
 
 time_t prevDisplay = 0; // when the Digital clock was displayed
 
-bool connected=0;
-bool drawnClock=0;
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/*******************************************************************
-    TFT_eSPI button example for the ESP32 Cheap Yellow Display.
-
-    https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display
-
-    Written by Claus Näveke
-    Github: https://github.com/TheNitek
- *******************************************************************/
-
-
-
-// Make sure to copy the UserSetup.h file into the library as
-// per the Github Instructions. The pins are defined in there.
-
-// ----------------------------
-// Standard Libraries
-// ----------------------------
-
-#include <SPI.h>
-
-// ----------------------------
-// Additional Libraries - each one of these will need to be installed.
-// ----------------------------
-
-#include <XPT2046_Bitbang.h>
-// A library for interfacing with the touch screen
-//
-// Can be installed from the library manager (Search for "XPT2046 Slim")
-// https://github.com/TheNitek/XPT2046_Bitbang_Arduino_Library
-
-#include <TFT_eSPI.h>
-// A library for interfacing with LCD displays
-//
-// Can be installed from the library manager (Search for "TFT_eSPI")
-// https://github.com/Bodmer/TFT_eSPI
-
 
 // ----------------------------
 // Touch Screen pins
@@ -468,93 +419,142 @@ bool drawnClock=0;
 
 XPT2046_Bitbang ts(XPT2046_MOSI, XPT2046_MISO, XPT2046_CLK, XPT2046_CS);
 
-//TFT_eSPI tft = TFT_eSPI();
-
-#define numKeys 3
-TFT_eSPI_Button key[numKeys];
-
-
-
-
-
-void drawButtons() {
-  uint16_t bWidth = TFT_HEIGHT/3;
-  uint16_t bHeight = TFT_WIDTH;
-  // Generate buttons with different size X deltas
-  for (int i = 0; i < numKeys; i++) {
-    key[i].initButton(&tft,
-                      bWidth * (i%3) + bWidth/2,
-                      bHeight/2,
-                      bWidth,
-                      bHeight,
-                      TFT_BLACK, // Outline
-                      TFT_BLUE, // Fill
-                      TFT_BLACK, // Text
-                      "",
-                      1);
-
-    key[i].drawButton(false, String(i+1));
-  }
-}
-
-bool drawnBut=0;
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 #define nSchermate 3
 
 /*-------- SETUP & LOOP ----------*/
 void setup()
 {
   Serial.begin(115200);
-
-  //SetupCYD();
-  //SetupWiFi();
-  //SetupNTP();
-  //SetupDigits();
-
-
   
-  // Start the SPI for the touch screen and init the TS library
   ts.begin();
-  //ts.setRotation(1);
-
-  // Start the tft display and set it to black
-  tft.init();
-  tft.setRotation(1); //This is the display in landscape
-
-  // Clear the screen before writing to it
-  tft.fillScreen(TFT_BLACK);
-  //tft.setFreeFont(&FreeMono18pt7b);
-  
+  SetupCYD();
+  SetupDigits();
 }
 
 
 int schermata=0;
-int lastSchermata=0;
+int sottoSchermata=0;
+int lastSottoSchermata=0;
+int lastSchermata=1;
+int nextSottoSchermata=0;
+int nextSchermata=0;
 bool justPressed=0;
+bool centralButton=0;
+bool connected=0;
+
 void loop()
 {
-  /*
+  switch(schermata)
+  {
+    case 0:
+      { 
+        switch(sottoSchermata)
+        {
+          case 0:
+          {
+            time_t current = now();
+
+            if(connected==0)
+            {
+              SetupWiFi();
+              SetupNTP();
+              connected=1;
+              tft.fillScreen(clockBackgroundColor);
+            }
+            
+            if(lastSchermata!=schermata || lastSottoSchermata!=sottoSchermata)
+            {
+              SetupDigits();
+              DrawDate(prevDisplay); // Draw Date and day of the week.
+              DrawColons();
+            }
+
+            if (current != prevDisplay)
+            {
+              prevDisplay = current;
+              ParseDigits(prevDisplay);
+              DrawDigitsAtOnce();    // Choose one: DrawDigitsWithoutAnimation(), DrawDigitsAtOnce(), DrawDigitsOneByOne()
+            }
+
+            if(centralButton)
+            {
+              centralButton=0;
+              nextSottoSchermata=1;
+            }
+            
+            if (current != prevDisplay)
+            {
+              prevDisplay = current;
+              ParseDigits(prevDisplay);
+              DrawDigitsAtOnce();    // Choose one: DrawDigitsWithoutAnimation(), DrawDigitsAtOnce(), DrawDigitsOneByOne()
+            }
+          }
+          break;
+          case 1:
+          {
+            if(lastSchermata!=schermata || lastSottoSchermata!=sottoSchermata)
+            {
+              tft.fillScreen(TFT_RED);
+            }
+            if(centralButton)
+            {
+              centralButton=0;
+              nextSottoSchermata=0;
+            }
+          }
+          break;
+        }
+      }
+    break;
+    case 1:
+      if(lastSchermata!=schermata || lastSottoSchermata!=sottoSchermata)
+      {
+        tft.fillScreen(TFT_BLACK);
+      }
+      delay(100);
+    break;
+    case 2:
+      if(lastSchermata!=schermata || lastSottoSchermata!=sottoSchermata)
+      {
+        tft.fillScreen(TFT_BLUE);
+      }
+  Serial.println("valori");
+  Serial.println(schermata);
+  Serial.println(sottoSchermata);
+  Serial.println(lastSchermata);
+  Serial.println(lastSottoSchermata);
+  
+    break;
+  }
+
   TouchPoint p = ts.getTouch();
   if (p.zRaw > 0 && !justPressed)
   {
     bool controllo=0;
     if(p.x<TFT_HEIGHT/3)
     {
-      lastSchermata=schermata;
-      schermata=(schermata-1+nSchermate)%nSchermate;
-      controllo=1;
+      if(sottoSchermata==0)
+      {
+        lastSchermata=schermata;
+        nextSchermata=(schermata-1+nSchermate)%nSchermate;
+        nextSottoSchermata=0;
+        controllo=1;
+      }
     }
     if(p.x>TFT_HEIGHT/3 && p.x<TFT_HEIGHT*2/3)
     {
-      Serial.println("selezionato");
+      centralButton=1;
       controllo=1;
     }
     if(p.x>TFT_HEIGHT*2/3)
     {
-      lastSchermata=schermata;
-      schermata=(schermata+1)%nSchermate;
-      controllo=1;
+      if(sottoSchermata==0)
+      {
+        lastSchermata=schermata;
+        nextSchermata=(schermata+1)%nSchermate;
+        nextSottoSchermata=0;
+        controllo=1;     
+      }
     }
     if(!controllo)
     {
@@ -567,141 +567,9 @@ void loop()
     justPressed=1;
   }
 
-
-  switch(schermata)
-  {
-    case 0:
-      {
-        tft.fillScreen(TFT_BLUE);
-        
-        time_t current = now();
-
-        if(lastSchermata!=schermata)
-        {
-          SetupCYD();
-          SetupDigits();
-          drawnClock=1;
-        }
-
-        if(connected==0)
-        {
-          SetupWiFi();
-          SetupNTP();
-          connected=1;
-        }
-        if (current != prevDisplay)
-        {
-          prevDisplay = current;
-          ParseDigits(prevDisplay);
-          DrawDigitsAtOnce();    // Choose one: DrawDigitsWithoutAnimation(), DrawDigitsAtOnce(), DrawDigitsOneByOne()
-          DrawDate(prevDisplay); // Draw Date and day of the week.
-          DrawColons();
-          DrawAmPm();
-        }
-        delay(100);
-      }
-    break;
-    case 1:
-      tft.fillScreen(TFT_RED);
-    break;
-    case 2:
-      tft.fillScreen(TFT_GREEN);
-    break;
-  }
-  
   lastSchermata=schermata;
-  /*/
-  time_t current = now();
-  if(schermata!=0)
-  {
-    drawnClock=0;
-  }
-  if(schermata!=0)
-  {
-    drawnBut=0;
-  }
-  switch(schermata)
-  {
-    case 0:
-      if(connected==0)
-      {
-        SetupWiFi();
-        SetupNTP();
-        connected=1;
-      }
+  lastSottoSchermata=sottoSchermata;
 
-      if(drawnClock==0)
-      {
-        SetupCYD();
-        SetupDigits();
-        drawnClock=1;
-      }
-      if (current != prevDisplay)
-      {
-        prevDisplay = current;
-        ParseDigits(prevDisplay);
-        DrawDigitsAtOnce();    // Choose one: DrawDigitsWithoutAnimation(), DrawDigitsAtOnce(), DrawDigitsOneByOne()
-        DrawDate(prevDisplay); // Draw Date and day of the week.
-        DrawColons();
-        DrawAmPm();
-      }
-      delay(100);
-    break;
-
-    case 1:
-        {
-          if(drawnBut==0)
-          {
-            drawButtons();
-            drawnBut=1;
-          }
-
-          TouchPoint p = ts.getTouch();
-          Serial.println(p.x);
-          // Adjust press state of each key appropriately
-          for (uint8_t b = 0; b < numKeys; b++) {
-            if ((p.zRaw > 0) && key[b].contains(p.x, p.y)) {
-              key[b].press(true);  // tell the button it is pressed
-            } else {
-              key[b].press(false);  // tell the button it is NOT pressed
-            }
-          }
-
-          // Check if any key has changed state
-          for (uint8_t b = 0; b < numKeys; b++) {
-            // If button was just pressed, redraw inverted button
-            if (key[b].justPressed()) {
-              Serial.printf("Button %d pressed\n", b);
-              key[b].drawButton(true, String(b+1));
-            }
-
-            // If button was just released, redraw normal color button
-
-            if (key[b].justReleased()) {
-              Serial.printf("Button %d released\n", b);
-              Serial.println("Button " + (String)b + " released");
-              key[b].drawButton(false, String(b+1));
-              
-              switch(b)
-              {
-                case 0://prev
-                  schermata=(schermata-1)%nSchermate;
-                break;
-
-                case 1://sel
-
-                break;
-
-                case 2://next
-                  schermata=(schermata+1)%nSchermate;
-                break;
-              }
-            }
-          }
-          delay(50);
-      }
-    break;
-  }
-  //*/
+  schermata=nextSchermata;
+  sottoSchermata=nextSottoSchermata;
 }
-
